@@ -3,6 +3,7 @@
   "displayName": "HTBasic Language Support",
   "description": "Syntax highlighting and basic syntax checking for HTBasic",
   "version": "0.0.1",
+  "license": "Apache-2.0",
   "publisher": "your-name",
   "engines": {
     "vscode": "^1.85.0"
