@@ -1,0 +1,39 @@
+{
+  "name": "htbasic",
+  "displayName": "HTBasic Language Support",
+  "description": "Syntax highlighting and basic syntax checking for HTBasic",
+  "version": "0.0.1",
+  "publisher": "your-name",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": ["onLanguage:htbasic"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "htbasic",
+        "aliases": ["HTBasic", "htbasic"],
+        "extensions": [".htb"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "htbasic",
+        "scopeName": "source.htbasic",
+        "path": "./syntaxes/htbasic.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0",
+    "vsce": "^2.15.0"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "source.htbasic",
+  "patterns": [
+    { "include": "#lineNumbers" },
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#keywords" },
+    { "include": "#builtinFunctions" },
+    { "include": "#iscConstants" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "lineNumbers": {
+      "patterns": [
+        { "match": "^\\s*\\d+\\s", "name": "constant.numeric.line-number.htbasic" }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        { "match": "!.*$", "name": "comment.line.exclamation.htbasic" },
+        { "match": "REM\\b.*$", "name": "comment.line.rem.htbasic" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        { "begin": "\"", "end": "\"", "name": "string.quoted.double.htbasic" }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?\\b", "name": "constant.numeric.htbasic" }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "match": "\\b(PRINT|INPUT|OUTPUT|IF|THEN|ELSE|ENDIF|FOR|TO|STEP|NEXT|GOTO|GOSUB|RETURN|SUB|END|FUNCTION|DIM|REM|STOP|WHILE|WEND|DO|LOOP|SELECT|CASE|ON|OFF)\\b",
+          "name": "keyword.control.htbasic"
+        },
+        {
+          "match": "\\b(GRAPHICS|CONFIGURE|PLOTTER|DUMP|GINIT|SCRATCH|HELP|QUIT|SYSTEM)\\b",
+          "name": "keyword.other.htbasic"
+        },
+        {
+          "match": "\\b(TRUE|FALSE|AND|OR|NOT|XOR)\\b",
+          "name": "keyword.operator.htbasic"
+        },
+        {
+          "match": "\\b(INTEGER|REAL|LONG|STATIC|STRING|COMPLEX)\\b",
+          "name": "storage.type.htbasic"
+        }
+      ]
+    },
+    "builtinFunctions": {
+      "patterns": [
+        {
+          "match": "\\b(KBD\\$|SYSTEM\\$|CHR\\$|STR\\$|VAL|ABS|SIN|COS|TAN|LOG|EXP|SQR|INT|RND|MIN|MAX|LEN|MOD)\\b",
+          "name": "support.function.builtin.htbasic"
+        }
+      ]
+    },
+    "iscConstants": {
+      "patterns": [
+        {
+          "match": "\\b(CRT|KBD|PRT|MSI)\\b",
+          "name": "constant.language.htbasic"
+        }
+      ]
+    }
+  }
+}
