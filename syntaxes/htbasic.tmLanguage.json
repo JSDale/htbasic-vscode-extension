@@ -35,6 +35,13 @@
     "keywords": {
       "patterns": [
         {
+          "name": "meta.function.definition",
+          "match": "\\b(DEF|SUB)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "keyword.declaration.function" },
+            "2": { "name": "entity.name.function" }
+          }
+        },
           "match": "\\b(PRINT|INPUT|OUTPUT|IF|THEN|ELSE|ENDIF|FOR|TO|STEP|NEXT|GOTO|GOSUB|RETURN|SUB|END|FUNCTION|DIM|REM|STOP|WHILE|WEND|DO|LOOP|SELECT|CASE|ON|OFF|FNEND|DEF|ENTER|SUBEND)\\b",
           "name": "keyword.control.htbasic"
         },
