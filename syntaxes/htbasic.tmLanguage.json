@@ -42,7 +42,7 @@
             "2": { "name": "entity.name.function" }
           }
         },
-          "match": "\\b(PRINT|INPUT|OUTPUT|IF|THEN|ELSE|ENDIF|FOR|TO|STEP|NEXT|GOTO|GOSUB|RETURN|SUB|END|FUNCTION|DIM|REM|STOP|WHILE|WEND|DO|LOOP|SELECT|CASE|ON|OFF|FNEND|DEF|ENTER|SUBEND)\\b",
+          "match": "\\b(PRINT|INPUT|OUTPUT|IF|THEN|ELSE|ENDIF|FOR|TO|STEP|NEXT|GOTO|GOSUB|RETURN|SUB|END|FUNCTION|DIM|REM|STOP|WHILE|WEND|DO|LOOP|SELECT|CASE|ON|OFF|FNEND|DEF|ENTER|SUBEND|ASSIGN)\\b",
           "name": "keyword.control.htbasic"
         },
         {
