@@ -29,7 +29,7 @@ interface LoadedFile {
 }
 
 /**
- * Scans `lines` for LOADSUB / LOAD statements and resolves the referenced
+ * Scans `lines` for LOADSUB / LOAD / GET statements and resolves the referenced
  * filenames relative to `currentDir`.  If the filename has no extension,
  * `.htb` is assumed.
  */
@@ -37,7 +37,7 @@ function parseLoadedFiles(lines: string[], currentDir: string): LoadedFile[] {
     const results: LoadedFile[] = [];
     for (let i = 0; i < lines.length; i++) {
         const stripped = stripComment(lines[i]).trim();
-        const m = /^\s*(?:LOADSUB|LOAD)\s+"([^"]+)"/i.exec(stripped);
+        const m = /^\s*(?:LOADSUB|LOAD|GET)\s+"([^"]+)"/i.exec(stripped);
         if (!m) continue;
 
         let filename = m[1];
@@ -239,7 +239,7 @@ function validateDocument(
         if (trimmed === '' || /^!/.test(trimmed) || /^REM\b/i.test(trimmed)) continue;
 
         // ── LOADSUB / LOAD file existence check ───────────────────────────────
-        const loadM = /^\s*(?:LOADSUB|LOAD)\s+"([^"]+)"/i.exec(trimmed);
+        const loadM = /^\s*(?:LOADSUB|LOAD|GET)\s+"([^"]+)"/i.exec(trimmed);
         if (loadM) {
             const lf = loadedFiles.find(f => f.lineIndex === i);
             if (lf && !lf.exists) {
