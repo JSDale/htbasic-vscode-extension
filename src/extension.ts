@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
 
 export function activate(context: vscode.ExtensionContext) {
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('htbasic');
@@ -12,8 +14,39 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerDefinitionProvider({ language: 'htbasic' }, new HTBasicDefinitionProvider())
     );
 
-    // Validate any already-open documents on activation
     vscode.workspace.textDocuments.forEach(validate);
+}
+
+// ─── LOADSUB / LOAD parser ───────────────────────────────────────────────────
+
+interface LoadedFile {
+    /** Resolved absolute path on disk. */
+    fsPath: string;
+    /** Line index of the LOADSUB/LOAD statement in the parent file. */
+    lineIndex: number;
+    /** Whether the file actually exists on disk. */
+    exists: boolean;
+}
+
+/**
+ * Scans `lines` for LOADSUB / LOAD statements and resolves the referenced
+ * filenames relative to `currentDir`.  If the filename has no extension,
+ * `.htb` is assumed.
+ */
+function parseLoadedFiles(lines: string[], currentDir: string): LoadedFile[] {
+    const results: LoadedFile[] = [];
+    for (let i = 0; i < lines.length; i++) {
+        const stripped = stripComment(lines[i]).trim();
+        const m = /^\s*(?:LOADSUB|LOAD)\s+"([^"]+)"/i.exec(stripped);
+        if (!m) continue;
+
+        let filename = m[1];
+        if (!path.extname(filename)) filename += '.htb';
+
+        const fsPath = path.resolve(currentDir, filename);
+        results.push({ fsPath, lineIndex: i, exists: fs.existsSync(fsPath) });
+    }
+    return results;
 }
 
 // ─── Definition Provider (F12) ───────────────────────────────────────────────
@@ -25,12 +58,13 @@ class HTBasicDefinitionProvider implements vscode.DefinitionProvider {
         token: vscode.CancellationToken
     ): Promise<vscode.Location | undefined> {
         const lineText = document.lineAt(position.line).text;
+        const currentLines = document.getText().split(/\r?\n/);
+        const currentDir = path.dirname(document.uri.fsPath);
 
-        // Determine what we're looking for before searching any files
+        // ── Determine search kind and target ──────────────────────────────────
         let searchKind: 'linenum' | 'goto-label' | 'symbol' | null = null;
         let searchTarget = '';
 
-        // ── Numeric literal under cursor → GOTO/GOSUB line number target ──────
         const numRange = document.getWordRangeAtPosition(position, /\d+/);
         if (numRange) {
             const num = document.getText(numRange);
@@ -41,7 +75,6 @@ class HTBasicDefinitionProvider implements vscode.DefinitionProvider {
             }
         }
 
-        // ── Identifier under cursor ───────────────────────────────────────────
         if (!searchKind) {
             const wordRange = document.getWordRangeAtPosition(position, /[A-Za-z_][A-Za-z0-9_]*\$?/);
             if (!wordRange) return undefined;
@@ -53,26 +86,28 @@ class HTBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
 
         // ── Search current file first ─────────────────────────────────────────
-        const currentLines = document.getText().split(/\r?\n/);
         const local = searchInLines(document.uri, currentLines, searchKind, searchTarget);
         if (local) return local;
 
-        // ── Search all other .htb files in the workspace ──────────────────────
-        const htbFiles = await vscode.workspace.findFiles('**/*.htb', undefined, undefined, token);
+        // Line numbers and labels are local-only — don't cross file boundaries
+        if (searchKind === 'linenum' || searchKind === 'goto-label') return undefined;
 
-        for (const fileUri of htbFiles) {
+        // ── Search only files declared with LOADSUB / LOAD ────────────────────
+        const loadedFiles = parseLoadedFiles(currentLines, currentDir);
+
+        for (const lf of loadedFiles) {
             if (token.isCancellationRequested) return undefined;
-            if (fileUri.fsPath === document.uri.fsPath) continue;
+            if (!lf.exists) continue;
 
             let lines: string[];
             try {
-                const bytes = await vscode.workspace.fs.readFile(fileUri);
+                const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(lf.fsPath));
                 lines = new TextDecoder('utf-8').decode(bytes).split(/\r?\n/);
             } catch {
                 continue;
             }
 
-            const result = searchInLines(fileUri, lines, searchKind, searchTarget);
+            const result = searchInLines(vscode.Uri.file(lf.fsPath), lines, searchKind, searchTarget);
             if (result) return result;
         }
 
@@ -93,17 +128,12 @@ function searchInLines(
         return findLabelDef(uri, lines, target)
             ?? findLineNumberDef(uri, lines, target);
     }
-    // 'symbol': SUB → DEF FN → label
     return findSubDef(uri, lines, target)
         ?? findFnDef(uri, lines, target)
         ?? findLabelDef(uri, lines, target);
 }
 
-function findLineNumberDef(
-    uri: vscode.Uri,
-    lines: string[],
-    num: string
-): vscode.Location | undefined {
+function findLineNumberDef(uri: vscode.Uri, lines: string[], num: string): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         if (new RegExp(`^\\s*${num}(\\s|$)`).test(lines[i])) {
             return new vscode.Location(uri, new vscode.Position(i, 0));
@@ -112,11 +142,7 @@ function findLineNumberDef(
     return undefined;
 }
 
-function findLabelDef(
-    uri: vscode.Uri,
-    lines: string[],
-    labelUpper: string
-): vscode.Location | undefined {
+function findLabelDef(uri: vscode.Uri, lines: string[], labelUpper: string): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/i.exec(lines[i]);
         if (m && m[1].toUpperCase() === labelUpper) {
@@ -126,11 +152,7 @@ function findLabelDef(
     return undefined;
 }
 
-function findSubDef(
-    uri: vscode.Uri,
-    lines: string[],
-    nameUpper: string
-): vscode.Location | undefined {
+function findSubDef(uri: vscode.Uri, lines: string[], nameUpper: string): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         const m = /^\s*SUB\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(lines[i]);
         if (m && m[1].toUpperCase() === nameUpper) {
@@ -140,11 +162,7 @@ function findSubDef(
     return undefined;
 }
 
-function findFnDef(
-    uri: vscode.Uri,
-    lines: string[],
-    nameUpper: string
-): vscode.Location | undefined {
+function findFnDef(uri: vscode.Uri, lines: string[], nameUpper: string): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         const m = /^\s*DEF\s+FN([A-Za-z_][A-Za-z0-9_$]*)/i.exec(lines[i]);
         if (m) {
@@ -167,16 +185,17 @@ function validateDocument(
 
     const diagnostics: vscode.Diagnostic[] = [];
     const lines = document.getText().split(/\r?\n/);
+    const currentDir = path.dirname(document.uri.fsPath);
 
-    // Block-matching stacks — each entry is the line index where the block opened
+    // Block-matching stacks
     const forStack: number[] = [];
     const whileStack: number[] = [];
     const doStack: number[] = [];
     const subStack: number[] = [];
-    const defStack: number[] = [];   // DEF FN … FNEND
-    const ifStack: number[] = [];    // multi-line IF blocks
+    const defStack: number[] = [];
+    const ifStack: number[] = [];
 
-    // ── First pass: collect definitions for GOTO/GOSUB/CALL validation ────────
+    // ── First pass: collect local definitions and parse LOADSUB/LOAD ──────────
     const definedLabels = new Set<string>();
     const definedLineNums = new Set<string>();
     const definedSubs = new Set<string>();
@@ -194,6 +213,19 @@ function validateDocument(
         if (subM) definedSubs.add(subM[1].toUpperCase());
     }
 
+    // Collect SUBs from LOADSUB/LOAD declared files (sync read is fine for linting)
+    const loadedFiles = parseLoadedFiles(lines, currentDir);
+    for (const lf of loadedFiles) {
+        if (!lf.exists) continue;
+        try {
+            const content = fs.readFileSync(lf.fsPath, 'utf8');
+            for (const raw of content.split(/\r?\n/)) {
+                const subM = /^\s*SUB\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(raw);
+                if (subM) definedSubs.add(subM[1].toUpperCase());
+            }
+        } catch { /* skip unreadable files */ }
+    }
+
     // ── Second pass: validate each line ───────────────────────────────────────
     for (let i = 0; i < lines.length; i++) {
         const raw = lines[i];
@@ -204,8 +236,17 @@ function validateDocument(
         const err  = (msg: string) => new vscode.Diagnostic(lineRange, msg, vscode.DiagnosticSeverity.Error);
         const warn = (msg: string) => new vscode.Diagnostic(lineRange, msg, vscode.DiagnosticSeverity.Warning);
 
-        // Skip blank / comment-only lines
         if (trimmed === '' || /^!/.test(trimmed) || /^REM\b/i.test(trimmed)) continue;
+
+        // ── LOADSUB / LOAD file existence check ───────────────────────────────
+        const loadM = /^\s*(?:LOADSUB|LOAD)\s+"([^"]+)"/i.exec(trimmed);
+        if (loadM) {
+            const lf = loadedFiles.find(f => f.lineIndex === i);
+            if (lf && !lf.exists) {
+                diagnostics.push(err(`File not found: "${loadM[1]}"`));
+            }
+            continue; // nothing else to check on a LOAD line
+        }
 
         // ── Unclosed string literal ───────────────────────────────────────────
         if (hasUnclosedString(stripped)) {
@@ -217,7 +258,7 @@ function validateDocument(
             diagnostics.push(err('IF statement missing THEN'));
         }
 
-        // ── Multi-line block IF (THEN at end-of-line with no statement after) ─
+        // ── Multi-line block IF ───────────────────────────────────────────────
         if (/^\s*IF\b/i.test(trimmed) && /\bTHEN\s*$/i.test(trimmed)) {
             ifStack.push(i);
         }
@@ -230,63 +271,38 @@ function validateDocument(
         }
 
         // ── FOR / NEXT ────────────────────────────────────────────────────────
-        if (/^\s*FOR\b/i.test(trimmed)) {
-            forStack.push(i);
-        }
+        if (/^\s*FOR\b/i.test(trimmed)) forStack.push(i);
         if (/^\s*NEXT\b/i.test(trimmed)) {
-            if (forStack.length === 0) {
-                diagnostics.push(err('NEXT without matching FOR'));
-            } else {
-                forStack.pop();
-            }
+            if (forStack.length === 0) diagnostics.push(err('NEXT without matching FOR'));
+            else forStack.pop();
         }
 
         // ── WHILE / WEND ──────────────────────────────────────────────────────
-        if (/^\s*WHILE\b/i.test(trimmed)) {
-            whileStack.push(i);
-        }
+        if (/^\s*WHILE\b/i.test(trimmed)) whileStack.push(i);
         if (/^\s*WEND\b/i.test(trimmed)) {
-            if (whileStack.length === 0) {
-                diagnostics.push(err('WEND without matching WHILE'));
-            } else {
-                whileStack.pop();
-            }
+            if (whileStack.length === 0) diagnostics.push(err('WEND without matching WHILE'));
+            else whileStack.pop();
         }
 
         // ── DO / LOOP ─────────────────────────────────────────────────────────
-        if (/^\s*DO\b/i.test(trimmed)) {
-            doStack.push(i);
-        }
+        if (/^\s*DO\b/i.test(trimmed)) doStack.push(i);
         if (/^\s*LOOP\b/i.test(trimmed)) {
-            if (doStack.length === 0) {
-                diagnostics.push(err('LOOP without matching DO'));
-            } else {
-                doStack.pop();
-            }
+            if (doStack.length === 0) diagnostics.push(err('LOOP without matching DO'));
+            else doStack.pop();
         }
 
         // ── SUB / SUBEND ──────────────────────────────────────────────────────
-        if (/^\s*SUB\b/i.test(trimmed)) {
-            subStack.push(i);
-        }
+        if (/^\s*SUB\b/i.test(trimmed)) subStack.push(i);
         if (/^\s*(SUBEND|END\s+SUB)\b/i.test(trimmed)) {
-            if (subStack.length === 0) {
-                diagnostics.push(err('SUBEND without matching SUB'));
-            } else {
-                subStack.pop();
-            }
+            if (subStack.length === 0) diagnostics.push(err('SUBEND without matching SUB'));
+            else subStack.pop();
         }
 
         // ── DEF FN / FNEND ────────────────────────────────────────────────────
-        if (/^\s*DEF\s+FN/i.test(trimmed)) {
-            defStack.push(i);
-        }
+        if (/^\s*DEF\s+FN/i.test(trimmed)) defStack.push(i);
         if (/^\s*FNEND\b/i.test(trimmed)) {
-            if (defStack.length === 0) {
-                diagnostics.push(err('FNEND without matching DEF FN'));
-            } else {
-                defStack.pop();
-            }
+            if (defStack.length === 0) diagnostics.push(err('FNEND without matching DEF FN'));
+            else defStack.pop();
         }
 
         // ── GOTO to undefined target ──────────────────────────────────────────
@@ -294,9 +310,7 @@ function validateDocument(
         if (gotoM) {
             const target = gotoM[1];
             if (/^\d+$/.test(target)) {
-                if (!definedLineNums.has(target)) {
-                    diagnostics.push(warn(`GOTO target line ${target} not found in file`));
-                }
+                if (!definedLineNums.has(target)) diagnostics.push(warn(`GOTO target line ${target} not found in file`));
             } else if (!definedLabels.has(target.toUpperCase())) {
                 diagnostics.push(warn(`GOTO label "${target}" not defined`));
             }
@@ -307,22 +321,20 @@ function validateDocument(
         if (gosubM) {
             const target = gosubM[1];
             if (/^\d+$/.test(target)) {
-                if (!definedLineNums.has(target)) {
-                    diagnostics.push(warn(`GOSUB target line ${target} not found in file`));
-                }
+                if (!definedLineNums.has(target)) diagnostics.push(warn(`GOSUB target line ${target} not found in file`));
             } else if (!definedLabels.has(target.toUpperCase())) {
                 diagnostics.push(warn(`GOSUB label "${target}" not defined`));
             }
         }
 
-        // ── CALL to undefined SUB ─────────────────────────────────────────────
+        // ── CALL to undefined SUB (checks current file + all LOADSUB files) ───
         const callM = /^\s*CALL\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(trimmed);
         if (callM && !definedSubs.has(callM[1].toUpperCase())) {
-            diagnostics.push(warn(`SUB "${callM[1]}" is not defined in this file`));
+            diagnostics.push(warn(`SUB "${callM[1]}" not found in this file or any LOADSUB file`));
         }
     }
 
-    // ── Report unclosed blocks (errors on their opening line) ─────────────────
+    // ── Unclosed blocks ───────────────────────────────────────────────────────
     const reportUnclosed = (stack: number[], kw: string, closing: string) => {
         for (const lineNum of stack) {
             diagnostics.push(new vscode.Diagnostic(
@@ -345,7 +357,6 @@ function validateDocument(
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Strip everything from the first unquoted `!` onward (inline comment). */
 function stripComment(line: string): string {
     let inString = false;
     for (let i = 0; i < line.length; i++) {
@@ -355,7 +366,6 @@ function stripComment(line: string): string {
     return line;
 }
 
-/** Returns true if the line has an unclosed string literal. */
 function hasUnclosedString(line: string): boolean {
     let open = false;
     for (const ch of line) {

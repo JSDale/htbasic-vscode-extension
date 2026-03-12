@@ -8,15 +8,24 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Programming Languages"],
-  "activationEvents": ["onLanguage:htbasic"],
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:htbasic"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
         "id": "htbasic",
-        "aliases": ["HTBasic", "htbasic"],
-        "extensions": [".htb"],
+        "aliases": [
+          "HTBasic",
+          "htbasic"
+        ],
+        "extensions": [
+          ".htb"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -33,6 +42,7 @@
     "watch": "tsc -watch -p ./"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.0.0",
     "vsce": "^2.15.0"

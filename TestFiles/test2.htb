@@ -2,6 +2,8 @@
 ! SUB PrintHeader and DEF FNSquare are defined in test.htb
 ! Press F12 on PrintHeader or FNSquare to jump to their definitions in test.htb
 
+LOAD "test.htb"
+
 CALL PrintHeader
 
 DIM Results(10)
