@@ -2,15 +2,20 @@
   "name": "htbasic",
   "displayName": "HTBasic Language Support",
   "description": "Syntax highlighting and basic syntax checking for HTBasic",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "license": "Apache-2.0",
-  "publisher": "your-name",
+  "publisher": "jsdale",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jsdale/htbasic-vscode-extension"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Programming Languages"
   ],
+
   "activationEvents": [
     "onLanguage:htbasic"
   ],
@@ -41,10 +46,13 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
+  "overrides": {
+    "undici": "5.28.4"
+  },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/vscode": "^1.85.0",
     "typescript": "^5.0.0",
-    "vsce": "^2.15.0"
+    "vsce": "^2.6.7"
   }
 }
