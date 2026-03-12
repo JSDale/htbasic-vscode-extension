@@ -1,0 +1,18 @@
+! test2.htb - Cross-file definition test
+! SUB PrintHeader and DEF FNSquare are defined in test.htb
+! Press F12 on PrintHeader or FNSquare to jump to their definitions in test.htb
+
+CALL PrintHeader
+
+DIM Results(10)
+
+FOR I = 1 TO 10
+    Results(I) = FNSquare(I)
+NEXT I
+
+PRINT "Squares computed from test2.htb:"
+FOR I = 1 TO 10
+    PRINT "  "; I; "^2 = "; Results(I)
+NEXT I
+
+END

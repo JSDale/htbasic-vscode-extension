@@ -19,13 +19,16 @@ export function activate(context: vscode.ExtensionContext) {
 // ─── Definition Provider (F12) ───────────────────────────────────────────────
 
 class HTBasicDefinitionProvider implements vscode.DefinitionProvider {
-    provideDefinition(
+    async provideDefinition(
         document: vscode.TextDocument,
         position: vscode.Position,
-        _token: vscode.CancellationToken
-    ): vscode.Location | undefined {
+        token: vscode.CancellationToken
+    ): Promise<vscode.Location | undefined> {
         const lineText = document.lineAt(position.line).text;
-        const lines = document.getText().split(/\r?\n/);
+
+        // Determine what we're looking for before searching any files
+        let searchKind: 'linenum' | 'goto-label' | 'symbol' | null = null;
+        let searchTarget = '';
 
         // ── Numeric literal under cursor → GOTO/GOSUB line number target ──────
         const numRange = document.getWordRangeAtPosition(position, /\d+/);
@@ -33,91 +36,121 @@ class HTBasicDefinitionProvider implements vscode.DefinitionProvider {
             const num = document.getText(numRange);
             const before = lineText.substring(0, numRange.start.character);
             if (/\b(GOTO|GOSUB|THEN)\s*$/i.test(before)) {
-                return findLineNumberDef(document, lines, num);
+                searchKind = 'linenum';
+                searchTarget = num;
             }
         }
 
         // ── Identifier under cursor ───────────────────────────────────────────
-        const wordRange = document.getWordRangeAtPosition(position, /[A-Za-z_][A-Za-z0-9_]*\$?/);
-        if (!wordRange) return undefined;
+        if (!searchKind) {
+            const wordRange = document.getWordRangeAtPosition(position, /[A-Za-z_][A-Za-z0-9_]*\$?/);
+            if (!wordRange) return undefined;
 
-        const word = document.getText(wordRange);
-        const wordUpper = word.toUpperCase();
-        const before = lineText.substring(0, wordRange.start.character);
-
-        // After GOTO / GOSUB / THEN → jump to label or line number
-        if (/\b(GOTO|GOSUB|THEN)\s*$/i.test(before)) {
-            return findLabelDef(document, lines, wordUpper)
-                ?? findLineNumberDef(document, lines, word);
+            const word = document.getText(wordRange);
+            const before = lineText.substring(0, wordRange.start.character);
+            searchTarget = word.toUpperCase();
+            searchKind = /\b(GOTO|GOSUB|THEN)\s*$/i.test(before) ? 'goto-label' : 'symbol';
         }
 
-        // General: SUB definition → DEF FN → label
-        return findSubDef(document, lines, wordUpper)
-            ?? findFnDef(document, lines, wordUpper)
-            ?? findLabelDef(document, lines, wordUpper);
+        // ── Search current file first ─────────────────────────────────────────
+        const currentLines = document.getText().split(/\r?\n/);
+        const local = searchInLines(document.uri, currentLines, searchKind, searchTarget);
+        if (local) return local;
+
+        // ── Search all other .htb files in the workspace ──────────────────────
+        const htbFiles = await vscode.workspace.findFiles('**/*.htb', undefined, undefined, token);
+
+        for (const fileUri of htbFiles) {
+            if (token.isCancellationRequested) return undefined;
+            if (fileUri.fsPath === document.uri.fsPath) continue;
+
+            let lines: string[];
+            try {
+                const bytes = await vscode.workspace.fs.readFile(fileUri);
+                lines = new TextDecoder('utf-8').decode(bytes).split(/\r?\n/);
+            } catch {
+                continue;
+            }
+
+            const result = searchInLines(fileUri, lines, searchKind, searchTarget);
+            if (result) return result;
+        }
+
+        return undefined;
     }
 }
 
+function searchInLines(
+    uri: vscode.Uri,
+    lines: string[],
+    kind: 'linenum' | 'goto-label' | 'symbol',
+    target: string
+): vscode.Location | undefined {
+    if (kind === 'linenum') {
+        return findLineNumberDef(uri, lines, target);
+    }
+    if (kind === 'goto-label') {
+        return findLabelDef(uri, lines, target)
+            ?? findLineNumberDef(uri, lines, target);
+    }
+    // 'symbol': SUB → DEF FN → label
+    return findSubDef(uri, lines, target)
+        ?? findFnDef(uri, lines, target)
+        ?? findLabelDef(uri, lines, target);
+}
+
 function findLineNumberDef(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     lines: string[],
     num: string
 ): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         if (new RegExp(`^\\s*${num}(\\s|$)`).test(lines[i])) {
-            return new vscode.Location(document.uri, new vscode.Position(i, 0));
+            return new vscode.Location(uri, new vscode.Position(i, 0));
         }
     }
     return undefined;
 }
 
 function findLabelDef(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     lines: string[],
     labelUpper: string
 ): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/i.exec(lines[i]);
         if (m && m[1].toUpperCase() === labelUpper) {
-            return new vscode.Location(
-                document.uri,
-                new vscode.Position(i, lines[i].indexOf(m[1]))
-            );
+            return new vscode.Location(uri, new vscode.Position(i, lines[i].indexOf(m[1])));
         }
     }
     return undefined;
 }
 
 function findSubDef(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     lines: string[],
     nameUpper: string
 ): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
         const m = /^\s*SUB\s+([A-Za-z_][A-Za-z0-9_]*)/i.exec(lines[i]);
         if (m && m[1].toUpperCase() === nameUpper) {
-            return new vscode.Location(
-                document.uri,
-                new vscode.Position(i, lines[i].indexOf(m[1]))
-            );
+            return new vscode.Location(uri, new vscode.Position(i, lines[i].indexOf(m[1])));
         }
     }
     return undefined;
 }
 
 function findFnDef(
-    document: vscode.TextDocument,
+    uri: vscode.Uri,
     lines: string[],
     nameUpper: string
 ): vscode.Location | undefined {
     for (let i = 0; i < lines.length; i++) {
-        // Matches: DEF FNfoo(...)
         const m = /^\s*DEF\s+FN([A-Za-z_][A-Za-z0-9_$]*)/i.exec(lines[i]);
         if (m) {
             const fn = m[1].toUpperCase();
-            // Accept cursor on either "FNfoo" or "foo"
             if (fn === nameUpper || 'FN' + fn === nameUpper) {
-                return new vscode.Location(document.uri, new vscode.Position(i, 0));
+                return new vscode.Location(uri, new vscode.Position(i, 0));
             }
         }
     }
