@@ -1,0 +1,23 @@
+! test.htb - Simple HTBasic test file
+! Counts from 1 to 10 and prints each value
+
+CALL PrintHeader
+
+FOR I = 1 TO 10
+    PRINT "Count: "; I; " -> Squared: "; FNSquare(I)
+NEXT I
+
+PRINT "Done."
+END
+
+! ── Function: returns the square of a number ─────────────────────────────────
+DEF FNSquare(N)
+    FNSquare = N * N
+FNEND
+
+! ── Subroutine: prints a header banner ───────────────────────────────────────
+SUB PrintHeader
+    PRINT "================================"
+    PRINT "  HTBasic Count-to-10 Test"
+    PRINT "================================"
+SUBEND

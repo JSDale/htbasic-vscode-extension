@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:transera.com)"
+      "WebFetch(domain:transera.com)",
+      "Bash(pdftotext /home/jsdale/Development/htbasic-vscode-extension/htbasic-manual.pdf -)",
+      "Bash(pdfinfo /home/jsdale/Development/htbasic-vscode-extension/htbasic-manual.pdf)"
     ]
   }
 }
